@@ -3,11 +3,12 @@
 #===============================================================================
 
 # Compiler can be set below, or via environment variable
-CC        = nvc++
+CC        = clang++
 OPTIMIZE  = yes
 DEBUG     = no
 DEVICE    = gpu
 SM        = cc70
+MR 	  = 86
 
 #===============================================================================
 # Program name & source code list
@@ -15,7 +16,7 @@ SM        = cc70
 
 program = main
 
-source = main.cpp
+source = main.cpp GSimulation.cpp
 
 obj = $(source:.cpp=.o)
 
@@ -42,8 +43,10 @@ ifeq ($(OPTIMIZE),yes)
 endif
 
 ifeq ($(DEVICE),gpu)
- # CFLAGS +=-Minfo -mp=gpu -gpu=managed -gpu=maxrregcount:120
-  CFLAGS +=-Minfo -mp=gpu -gpu=$(SM)  -gpu=maxrregcount:120
+   CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda 
+#   CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda --cuda-path=$(OLCF_CUDA_ROOT) -Xcuda-ptxas --maxrregcount=$(MR)
+  #CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda --cuda-path=$(GPU_PATH) -fopenmp-new-driver -foffload-lto 
+ # CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda --cuda-path=$(GPU_PATH) -Xcuda-ptxas --maxrregcount=$(MR) -fopenmp-new-driver -foffload-lto -fopenmp-assume-no-thread-state
 else
   CFLAGS +=-qopenmp
 endif
@@ -54,12 +57,12 @@ endif
 $(program): $(obj) Makefile
 	$(CC) $(CFLAGS) $(obj) -o $@ $(LDFLAGS)
 
-%.o: %.cpp Makefile
+%.o: %.cpp *.hpp Makefile
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -rf $(program) $(obj)
 
 run: $(program)
-	./$(program) 1024 50 16
+	./$(program) 16000 100
 

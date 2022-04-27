@@ -24,6 +24,8 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <iostream>
+#include "floydwarshall.hpp"
 
 #define MAXDISTANCE    (200)
 
@@ -172,6 +174,9 @@ int main(int argc, char** argv) {
 
   unsigned int numPasses = numNodes;
 
+ double total_time_ = 0.;
+ TimeInterval t0;
+
 #pragma omp target data map(alloc: pathDistanceMatrix[0:matrixSize], \
                                    pathMatrix[0:matrixSize])
   {
@@ -219,7 +224,7 @@ int main(int argc, char** argv) {
     }
 #pragma omp target update from (pathDistanceMatrix[0:matrixSize]) 
   }
-
+ total_time_ = t0.Elapsed();
 
   // verify
   floydWarshallCPUReference(verificationPathDistanceMatrix,
@@ -246,6 +251,9 @@ int main(int argc, char** argv) {
       }
     }
   }
+
+  std::cout << "\n";
+  std::cout << "# Total Time (s)     : " << total_time_ << "\n";
 
   free(pathDistanceMatrix);
   free(pathMatrix);
