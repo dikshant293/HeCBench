@@ -25,7 +25,9 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <iostream>
 #include <hip/hip_runtime.h>
+#include "floydwarshall.hpp"
 
 #define MAXDISTANCE    (200)
 
@@ -206,6 +208,9 @@ int main(int argc, char** argv) {
   dim3 grids( globalThreads[0]/localThreads[0], globalThreads[1]/localThreads[1]);
   dim3 threads (localThreads[0],localThreads[1]);
 
+  double total_time = 0.;
+  TimeInterval t0;
+
   unsigned int *pathDistanceBuffer, *pathBuffer;
   hipMalloc((void**)&pathDistanceBuffer, matrixSizeBytes);
   hipMalloc((void**)&pathBuffer, matrixSizeBytes);
@@ -242,7 +247,8 @@ int main(int argc, char** argv) {
   hipMemcpy(pathDistanceMatrix, pathDistanceBuffer, matrixSizeBytes, hipMemcpyDeviceToHost);
   hipFree(pathDistanceBuffer);
   hipFree(pathBuffer);
-
+  total_time = t0.Elapsed();
+  
   // verify
   floydWarshallCPUReference(verificationPathDistanceMatrix, verificationPathMatrix, numNodes);
   if(memcmp(pathDistanceMatrix, verificationPathDistanceMatrix, matrixSizeBytes) == 0)
@@ -266,6 +272,10 @@ int main(int argc, char** argv) {
       }
     }
   }
+
+
+  std::cout << "\n";
+  std::cout << "# Total Time (s)     : " << total_time << "\n";
 
   free(pathDistanceMatrix);
   free(pathMatrix);
