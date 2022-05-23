@@ -42,8 +42,9 @@ ifeq ($(OPTIMIZE),yes)
 endif
 
 ifeq ($(DEVICE),gpu)
- # CFLAGS +=-Minfo -mp=gpu -gpu=managed -gpu=maxrregcount:120
-  CFLAGS +=-Minfo -mp=gpu -gpu=$(SM)  -gpu=maxrregcount:120
+ # CFLAGS +=-mp=gpu -gpu=managed -gpu=maxrregcount:120
+  CFLAGS += -mp=gpu -gpu=$(SM)  -gpu=maxrregcount:16
+  #CFLAGS +=-Minfo -mp=gpu -gpu=$(SM)  -gpu=maxrregcount:60
 else
   CFLAGS +=-qopenmp
 endif

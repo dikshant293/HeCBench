@@ -172,12 +172,13 @@ int main(int argc, char** argv) {
   memcpy(verificationPathDistanceMatrix, pathDistanceMatrix, matrixSizeBytes);
   memcpy(verificationPathMatrix, pathMatrix, matrixSizeBytes);
 
+  //unsigned int numPasses = 1;
   unsigned int numPasses = numNodes;
 
  double total_time_ = 0.;
  TimeInterval t0;
 
-#pragma omp target data map(alloc: pathDistanceMatrix[0:matrixSize], \
+#pragma omp target enter data map(alloc: pathDistanceMatrix[0:matrixSize], \
                                    pathMatrix[0:matrixSize])
   {
     for (unsigned int n = 0; n < iterations; n++) {
@@ -203,9 +204,13 @@ int main(int argc, char** argv) {
 
       for(unsigned int k = 0; k < numPasses; k++)
       {
-#pragma omp target teams distribute parallel for collapse(2) thread_limit (blockSize*blockSize) nowait
+
+//#pragma omp target teams distribute thread_limit (blockSize*blockSize) //nowait //unroll tile sizes(64, 64) 
+#pragma omp target teams distribute parallel for collapse(2) thread_limit (blockSize*blockSize) nowait //unroll tile sizes(64, 64) 
+//#pragma omp target teams distribute parallel for thread_limit (blockSize*blockSize) nowait // tile sizes(64, 64) 
         for(unsigned int y = 0; y < numNodes; ++y)
         {
+	  //#pragma omp parallel for //tile sizes(64)
           for(unsigned int x = 0; x < numNodes; ++x)
           {
             unsigned int distanceYtoX = pathDistanceMatrix[y*numNodes + x];
@@ -222,7 +227,10 @@ int main(int argc, char** argv) {
         }
       }
     }
+#pragma omp barrier
+//#pragma omp taskwait
 #pragma omp target update from (pathDistanceMatrix[0:matrixSize]) 
+//#pragma omp target exit data map (from: pathDistanceMatrix[0:matrixSize]) 
   }
  total_time_ = t0.Elapsed();
 

@@ -3,11 +3,14 @@
 #===============================================================================
 
 # Compiler can be set below, or via environment variable
-CC        = clang++
+#LLVM
+#CC        = clang++
+#AMD
+CC        = amdclang++
 OPTIMIZE  = yes
 DEBUG     = no
 DEVICE    = gpu
-ARCH      = gfx906
+ARCH      = gfx90a
 
 #===============================================================================
 # Program name & source code list
@@ -45,7 +48,8 @@ ifeq ($(DEVICE),gpu)
   CFLAGS += -target x86_64-pc-linux-gnu \
           -fopenmp -fopenmp-targets=amdgcn-amd-amdhsa \
           -Xopenmp-target=amdgcn-amd-amdhsa \
-          -march=$(ARCH)
+          -march=$(ARCH) 
+	  #-fopenmp-assume-no-thread-state
 else
   CFLAGS +=-fopenmp
 endif

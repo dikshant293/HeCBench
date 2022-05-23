@@ -3,12 +3,11 @@
 #===============================================================================
 
 # Compiler can be set below, or via environment variable
-CC        = clang++
+CC        = CC
 OPTIMIZE  = yes
 DEBUG     = no
 DEVICE    = gpu
-SM        = cc70
-MR 	  = 90
+ARCH      = gfx90a
 
 #===============================================================================
 # Program name & source code list
@@ -16,7 +15,7 @@ MR 	  = 90
 
 program = main
 
-source = main.cpp 
+source = main.cpp
 
 obj = $(source:.cpp=.o)
 
@@ -40,20 +39,12 @@ endif
 # Optimization Flags
 ifeq ($(OPTIMIZE),yes)
   CFLAGS += -O3
-  #CFLAGS += -Ofast 
 endif
 
 ifeq ($(DEVICE),gpu)
-#   CFLAGS += -fopenmp -fopenmp-targets=nvptx64 -fopenmp-target-debug=3
-#   CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda #-fopenmp-cuda-mode
-   CFLAGS += -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda  -march=native -Xcuda-ptxas --maxrregcount=$(MR) -fopenmp-assume-no-thread-state
-#   CFLAGS += -fopenmp  -fopenmp-targets=nvptx64-nvidia-cuda  -march=native -fopenmp-version=51 #-Xcuda-ptxas --maxrregcount=$(MR)
-   #CFLAGS += -fopenmp -fopenmp-cuda-mode -fopenmp-targets=nvptx64-nvidia-cuda -lcudart -fno-exceptions -march=native -fopenmp-version=51 -fno-unroll-loops -fno-vectorize -llvm_info -Rpass=loop-unroll
-  # CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda --cuda-path=$(OLCF_CUDA_ROOT) #-Xcuda-ptxas --maxrregcount=$(MR)
-  #CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda --cuda-path=$(GPU_PATH) -fopenmp-new-driver -foffload-lto 
- # CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda --cuda-path=$(GPU_PATH) -Xcuda-ptxas --maxrregcount=$(MR) -fopenmp-new-driver -foffload-lto -fopenmp-assume-no-thread-state
+  CFLAGS +=-fopenmp
 else
-  CFLAGS +=-qopenmp
+  CFLAGS +=-fopenmp
 endif
 #===============================================================================
 # Targets to Build
@@ -62,12 +53,12 @@ endif
 $(program): $(obj) Makefile
 	$(CC) $(CFLAGS) $(obj) -o $@ $(LDFLAGS)
 
-%.o: %.cpp *.hpp Makefile
+%.o: %.cpp Makefile
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -rf $(program) $(obj)
 
 run: $(program)
-	./$(program) 16000 100
+	./$(program) 1024 50 16
 
