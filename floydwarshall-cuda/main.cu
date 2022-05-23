@@ -26,6 +26,8 @@
 #include <assert.h>
 #include <string.h>
 #include <cuda.h>
+#include <iostream>
+#include "floydwarshall.hpp"
 
 #define MAXDISTANCE    (200)
 
@@ -110,6 +112,7 @@ void floydWarshallCPUReference(unsigned int * pathDistanceMatrix,
  */
 
 __global__ void floydWarshallPass(
+  //  unsigned int * pathDistanceMatrix_d,
     unsigned int * pathDistanceBuffer,
     unsigned int * pathBuffer        ,
     const unsigned int numNodes      ,
@@ -122,6 +125,9 @@ __global__ void floydWarshallPass(
   int oldWeight = pathDistanceBuffer[yValue * numNodes + xValue];
   int tempWeight = pathDistanceBuffer[yValue * numNodes + k] + 
     pathDistanceBuffer[k * numNodes + xValue];
+  //int oldWeight = pathDistanceMatrix_d[yValue * numNodes + xValue];
+  //int tempWeight = pathDistanceMatrix_d[yValue * numNodes + k] + 
+   // pathDistanceMatrix_d[k * numNodes + xValue];
 
   if (tempWeight < oldWeight)
   {
@@ -205,10 +211,19 @@ int main(int argc, char** argv) {
 
   dim3 grids( globalThreads[0]/localThreads[0], globalThreads[1]/localThreads[1]);
   dim3 threads (localThreads[0],localThreads[1]);
+  //dim3 grids( (globalThreads[0]/localThreads[0])*(globalThreads[1]/localThreads[1]), 1, 1);
+  //dim3 threads (localThreads[0]*localThreads[1], 1, 1);
 
-  unsigned int *pathDistanceBuffer, *pathBuffer;
+double total_time_ = 0. ;
+TimeInterval t0;
+
+  unsigned int *pathDistanceBuffer, *pathBuffer; // *pathDistanceMatrix_d;
   cudaMalloc((void**)&pathDistanceBuffer, matrixSizeBytes);
   cudaMalloc((void**)&pathBuffer, matrixSizeBytes);
+  //cudaMalloc((void**)&pathDistanceMatrix_d, matrixSizeBytes);
+
+  //cudaMemcpy(pathDistanceMatrix_d, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
+  //cudaMemcpy(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
 
   // copy the matrix from a host to a device "iterations" times,
   // but copy the result from a device to a host once
@@ -231,17 +246,20 @@ int main(int argc, char** argv) {
      * path goes for each pair of nodes.
      */
 
-    cudaMemcpyAsync(pathDistanceBuffer, pathDistanceMatrix, 
-        matrixSizeBytes, cudaMemcpyHostToDevice, 0);
+    cudaMemcpy(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
+    //cudaMemcpyAsync(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice, 0);
 
     for(unsigned int i = 0; i < numPasses; i++)
     {
       floydWarshallPass <<< grids, threads >>> (pathDistanceBuffer,pathBuffer,numNodes,i);
+      //floydWarshallPass <<< grids, threads >>> ( pathDistanceMatrix_d, pathDistanceBuffer,pathBuffer,numNodes,i);
     }
   }
+  //total_time_ = t0.Elapsed();
   cudaMemcpy(pathDistanceMatrix, pathDistanceBuffer, matrixSizeBytes, cudaMemcpyDeviceToHost);
   cudaFree(pathDistanceBuffer);
   cudaFree(pathBuffer);
+  total_time_ = t0.Elapsed();
 
   // verify
   floydWarshallCPUReference(verificationPathDistanceMatrix, verificationPathMatrix, numNodes);
@@ -266,6 +284,10 @@ int main(int argc, char** argv) {
       }
     }
   }
+
+
+  std::cout << "\n";
+  std::cout << "# Total Time (s)     : " << total_time_ << "\n";
 
   free(pathDistanceMatrix);
   free(pathMatrix);
