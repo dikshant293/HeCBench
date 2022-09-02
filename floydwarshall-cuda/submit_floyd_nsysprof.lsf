@@ -1,0 +1,23 @@
+#!/bin/bash
+#BSUB -P gen010
+#BSUB -W 00:30
+#BSUB -nnodes 1
+#BSUB -alloc_flags "smt4"
+#BSUB -J nbody
+#BSUB -u thavappiragm@ornl.gov
+#BSUB -B
+#BSUB -N
+#BSUB -o floyd_summit.%J
+#BSUB -e floyd_summit.%J
+
+#Module imports
+module load job-step-viewer
+
+ module load nsight-systems
+ module load cuda/11.5.2
+ 
+ jsrun -n 1 -r 1 -a 1 -g 1 -c 1 nsys profile  -o ./floyd_cuda_async_new ./main 2048 10 16
+ #jsrun -n 1 -r 1 -a 1 -g 1 -c 1 nsys profile  -o ./floyd_cuda_asyn ./main_asyn 2048 10 16
+ #jsrun -n 1 -r 1 -a 1 -g 1 -c 1 nvprof --metrics all ./main_nv 1000000 100 >> ./prof/nbody_omp_llvm_metrics.txt
+
+
