@@ -224,6 +224,10 @@ TimeInterval t0;
 
   //cudaMemcpy(pathDistanceMatrix_d, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
   //cudaMemcpy(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
+  
+  cudaStream_t stream1, stream2; 
+  cudaStreamCreate(&stream1);
+  cudaStreamCreate(&stream2);
 
   // copy the matrix from a host to a device "iterations" times,
   // but copy the result from a device to a host once
@@ -246,12 +250,13 @@ TimeInterval t0;
      * path goes for each pair of nodes.
      */
 
-    cudaMemcpy(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
+    //cudaMemcpy(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice);
     //cudaMemcpyAsync(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice, 0);
+    cudaMemcpyAsync(pathDistanceBuffer, pathDistanceMatrix, matrixSizeBytes, cudaMemcpyHostToDevice, stream1);
 
     for(unsigned int i = 0; i < numPasses; i++)
     {
-      floydWarshallPass <<< grids, threads >>> (pathDistanceBuffer,pathBuffer,numNodes,i);
+      floydWarshallPass <<< grids, threads, 0, stream2 >>> (pathDistanceBuffer,pathBuffer,numNodes,i);
       //floydWarshallPass <<< grids, threads >>> ( pathDistanceMatrix_d, pathDistanceBuffer,pathBuffer,numNodes,i);
     }
   }
