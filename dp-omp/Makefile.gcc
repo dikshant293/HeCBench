@@ -3,7 +3,7 @@
 #===============================================================================
 
 # Compiler can be set below, or via environment variable
-CC        = nvc++
+CC        = g++
 OPTIMIZE  = yes
 DEBUG     = no
 DEVICE    = gpu
@@ -14,7 +14,7 @@ SM        = cc70
 # Program name & source code list
 #===============================================================================
 
-program = main_$(SM)_nvc
+program = main_$(SM)_gcc
 
 source = main.cpp shrUtils.cpp    
 
@@ -44,12 +44,12 @@ endif
 
 # ASYNC
 ifeq ($(USE_ASYNC), yes)
-     CFLAGS += -DASYNC
+     CFLAGS += -DASYNC -DTWAIT
      program :=$(program)_async
 endif
 
 ifeq ($(DEVICE),gpu)
-  CFLAGS +=-Minfo -mp=gpu -gpu=$(SM)
+  CFLAGS +=-fopenmp -foffload=-lm 
 else
   CFLAGS +=-qopenmp
 endif

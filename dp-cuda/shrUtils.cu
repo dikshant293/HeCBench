@@ -1214,6 +1214,7 @@ compareData( const T* reference, const T* data, const unsigned int len,
     for( unsigned int i = 0; i < len; ++i) {
 
         T diff = reference[i] - data[i];
+	cout << "refer: " << reference[i] << "data: " << data[i] << "\n";
         bool comp = (diff <= epsilon) && (diff >= -epsilon);
         result &= comp;
 

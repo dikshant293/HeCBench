@@ -5,7 +5,7 @@
 # Compiler can be set below, or via environment variable
 CC        = nvcc
 OPTIMIZE  = yes
-DEBUG     = no
+DEBUG     = yes
 ARCH      = sm_60
 
 #===============================================================================
@@ -23,14 +23,14 @@ obj = $(source:.cu=.o)
 #===============================================================================
 
 # Standard Flags
-CFLAGS := -std=c++14 -Xcompiler -Wall -arch=$(ARCH)
+CFLAGS := $(EXTRA_CFLAGS) -std=c++14 -Xcompiler -Wall -arch=$(ARCH)
 
 # Linker Flags
 LDFLAGS = 
 
 # Debug Flags
 ifeq ($(DEBUG),yes)
-  CFLAGS += -g
+  CFLAGS += -g -D_DBUG
   LDFLAGS  += -g
 endif
 
@@ -38,6 +38,12 @@ endif
 # Optimization Flags
 ifeq ($(OPTIMIZE),yes)
   CFLAGS += -O3
+endif
+
+# ASYNC
+ifeq ($(USE_ASYNC), yes)
+     CFLAGS += -DASYNC
+     program :=$(program)_async
 endif
 
 #===============================================================================
@@ -54,5 +60,4 @@ clean:
 	rm -rf $(program) $(obj)
 
 run: $(program)
-	./$(program) 67108864
-
+	./$(program) 67108864 100

@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <chrono>
 #include "shrUtils.h"
 
 // Forward Declarations
@@ -26,37 +27,62 @@ void DotProductHost(const float* pfData1, const float* pfData2, float* pfResult,
 
 int main(int argc, char **argv)
 {
-  int iNumElements = atoi(argv[1]);
+  if (argc != 4) {
+    printf("Usage: %s <number of elements> <repeat>\n", argv[0]);
+    return 1;
+  }
+  const int iNumElements = atoi(argv[1]);
+  const int iNumIterations = atoi(argv[2]);
 
   // set and log Global and Local work size dimensions
-  int szLocalWorkSize = 256;
+  int szLocalWorkSize = atoi(argv[3]);
   // rounded up to the nearest multiple of the LocalWorkSize
   int szGlobalWorkSize = shrRoundUp((int)szLocalWorkSize, iNumElements);  
 
+  const size_t src_size = szGlobalWorkSize * 4;
+  const size_t src_size_bytes = src_size * sizeof(float);
+
+  const size_t dst_size = szGlobalWorkSize;
+  const size_t dst_size_bytes = dst_size * sizeof(float);
+
   // Allocate and initialize host arrays
-  float* srcA = (float *)malloc(sizeof(float) * szGlobalWorkSize * 4);
-  float* srcB = (float *)malloc(sizeof(float) * szGlobalWorkSize * 4);
-  float*  dst = (float *)malloc(sizeof(float) * szGlobalWorkSize);
-  float* Golden = (float *)malloc(sizeof(float) * iNumElements);
+  float* srcA = (float*) malloc (src_size_bytes);
+  float* srcB = (float*) malloc (src_size_bytes);
+  float*  dst = (float*) malloc (dst_size_bytes);
+  float* Golden = (float*) malloc (sizeof(float) * iNumElements);
   shrFillArray(srcA, 4 * iNumElements);
   shrFillArray(srcB, 4 * iNumElements);
 
   printf("Global Work Size \t\t= %d\nLocal Work Size \t\t= %d\n# of Work Groups \t\t= %d\n\n", 
            szGlobalWorkSize, szLocalWorkSize, (szGlobalWorkSize % szLocalWorkSize + szGlobalWorkSize/szLocalWorkSize)); 
 
-  #pragma omp target data map(to: srcA[0:szGlobalWorkSize * 4], srcB[0:szGlobalWorkSize * 4]) \
-                          map(from: dst[0:szGlobalWorkSize])
+  #pragma omp target data map(to: srcA[0:src_size], srcB[0:src_size]) \
+                          map(from: dst[0:dst_size])
   {
-    for (int i = 0; i < 100; i++) {
-      #pragma omp target teams distribute parallel for thread_limit(szLocalWorkSize)
+    auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < iNumIterations; i++) {
+#ifdef ASYNC  
+      #pragma omp target teams distribute parallel for thread_limit(szLocalWorkSize) nowait
+#else
+      #pragma omp target teams distribute parallel for thread_limit(szLocalWorkSize) 
+#endif
       for (int iGID = 0; iGID < iNumElements; iGID++) {
         int iInOffset = iGID << 2;
-        dst[iGID] =  srcA[iInOffset]     * srcB[iInOffset] 
-                   + srcA[iInOffset + 1] * srcB[iInOffset + 1]
-                   + srcA[iInOffset + 2] * srcB[iInOffset + 2]
-                   + srcA[iInOffset + 3] * srcB[iInOffset + 3];
+        dst[iGID] =  srcA[iInOffset    ] * srcB[iInOffset    ] +
+                     srcA[iInOffset + 1] * srcB[iInOffset + 1] +
+                     srcA[iInOffset + 2] * srcB[iInOffset + 2] +
+                     srcA[iInOffset + 3] * srcB[iInOffset + 3];
       }
     }
+
+#ifdef ASYNC 
+#ifdef TASKWAIT 
+       #pragma omp barrier
+#endif    
+#endif    
+    auto end = std::chrono::steady_clock::now();
+    auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
   }
 
   // Compute and compare results for golden-host and report errors and pass/fail

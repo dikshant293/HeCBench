@@ -3,18 +3,19 @@
 #===============================================================================
 
 # Compiler can be set below, or via environment variable
-CC        = nvc++
+CC        = clang++
 OPTIMIZE  = yes
 DEBUG     = no
 DEVICE    = gpu
 SM        = cc70
+MR        = 90
 
 
 #===============================================================================
 # Program name & source code list
 #===============================================================================
 
-program = main_$(SM)_nvc
+program = main_$(SM)_clang
 
 source = main.cpp shrUtils.cpp    
 
@@ -44,12 +45,12 @@ endif
 
 # ASYNC
 ifeq ($(USE_ASYNC), yes)
-     CFLAGS += -DASYNC
+     CFLAGS += -DASYNC -DTASKWAIT
      program :=$(program)_async
 endif
 
 ifeq ($(DEVICE),gpu)
-  CFLAGS +=-Minfo -mp=gpu -gpu=$(SM)
+  CFLAGS +=-fopenmp -fopenmp-targets=nvptx64-nvidia-cuda  -march=native #-Xcuda-ptxas --maxrregcount=$(MR) -fopenmp-assume-no-thread-state
 else
   CFLAGS +=-qopenmp
 endif
