@@ -77,7 +77,9 @@ int main(int argc, char **argv)
 
 #ifdef ASYNC 
 #ifdef TASKWAIT 
-       #pragma omp barrier
+//       #pragma omp barrier
+       #pragma omp taskwait // intel requires taskwait instead of barrier
+
 #endif    
 #endif    
     auto end = std::chrono::steady_clock::now();

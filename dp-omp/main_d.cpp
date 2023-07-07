@@ -57,9 +57,10 @@ int main(int argc, char **argv)
   printf("Global Work Size \t\t= %d\nLocal Work Size \t\t= %d\n# of Work Groups \t\t= %d\n\n", 
            szGlobalWorkSize, szLocalWorkSize, (szGlobalWorkSize % szLocalWorkSize + szGlobalWorkSize/szLocalWorkSize)); 
 
+    auto start = std::chrono::steady_clock::now();
   #pragma omp target data map(alloc: srcA[0:src_size], srcB[0:src_size], dst[0:dst_size])
   {
-    auto start = std::chrono::steady_clock::now();
+    //auto start = std::chrono::steady_clock::now();
 
 
     for (int i = 0; i < iNumIterations; i++) {
@@ -84,14 +85,19 @@ int main(int argc, char **argv)
 
 #ifdef ASYNC 
 #ifdef TASKWAIT 
-       #pragma omp barrier
+       //#pragma omp barrier 
+       #pragma omp taskwait // intel requires taskwait instead of barrier
 #endif    
 #endif    
 #pragma omp target update from(dst[0:dst_size])
+    //auto end = std::chrono::steady_clock::now();
+    //auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    //printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
+  }
+
     auto end = std::chrono::steady_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
-  }
+    printf("elapsed time %f (s)\n", (time * 1e-9f));
 
   // Compute and compare results for golden-host and report errors and pass/fail
   printf("Comparing against Host/C++ computation...\n\n"); 
