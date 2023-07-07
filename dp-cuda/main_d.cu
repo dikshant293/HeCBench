@@ -82,8 +82,17 @@ int main(int argc, char **argv)
   const size_t dst_size_bytes = dst_size * sizeof(float);
 
   // Allocate and initialize host arrays
-  float* srcA = (float*) malloc (src_size_bytes);
-  float* srcB = (float*) malloc (src_size_bytes);
+float* srcA;
+float* srcB;
+
+#ifdef ASYNC
+  cudaMallocHost (&srcA, src_size_bytes);
+  cudaMallocHost (&srcB, src_size_bytes);
+#else
+  srcA = (float*) malloc (src_size_bytes);
+  srcB = (float*) malloc (src_size_bytes);
+#endif
+
   float*  dst = (float*) malloc (dst_size_bytes);
   float* Golden = (float*) malloc (sizeof(float) * iNumElements);
   shrFillArray(srcA, 4 * iNumElements);
@@ -118,6 +127,7 @@ int main(int argc, char **argv)
 #ifdef ASYNC
     cudaMemcpyAsync(d_srcA, srcA, src_size_bytes, cudaMemcpyHostToDevice, custream[0]);
     cudaMemcpyAsync(d_srcB, srcB, src_size_bytes, cudaMemcpyHostToDevice, custream[1]);
+  cudaDeviceSynchronize();
     for (int k=2; k<ncustreams; k++){
        nl = (k-2)*numElementsSub;
        nu = ((nl +numElementsSub) < iNumElements ) ?  (nl +numElementsSub) : iNumElements;
@@ -137,9 +147,10 @@ int main(int argc, char **argv)
   auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
   printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
 
-  cudaFree(d_dst);
-  cudaFree(d_srcA);
-  cudaFree(d_srcB);
+#ifdef ASYNC
+  for (int ics=0; ics<ncustreams; ics++ )
+    cudaStreamDestroy(custream[ics]);
+#endif
 
   // Compute and compare results for golden-host and report errors and pass/fail
   printf("Comparing against Host/C++ computation...\n\n"); 
@@ -147,8 +158,20 @@ int main(int argc, char **argv)
   shrBOOL bMatch = shrComparefet((const float*)Golden, (const float*)dst, (unsigned int)iNumElements, 0.0f, 0);
   printf("\nGPU Result %s CPU Result\n", (bMatch == shrTRUE) ? "matches" : "DOESN'T match"); 
 
+#ifdef ASYNC
+  cudaFreeHost(srcA);
+  cudaFreeHost(srcB);
+#endif
+
+  cudaFree(d_dst);
+  cudaFree(d_srcA);
+  cudaFree(d_srcB);
+
+#ifndef ASYNC
   free(srcA);
   free(srcB);
+#endif
+
   free(dst);
   free(Golden);
   return EXIT_SUCCESS;
