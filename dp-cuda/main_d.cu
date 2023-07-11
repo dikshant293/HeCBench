@@ -1,5 +1,5 @@
-/*
- * Copyright 1993-2010 NVIDIA Corporation.  All rights reserved.
+
+ /* Copyright 1993-2010 NVIDIA Corporation.  All rights reserved.
  *
  * Please refer to the NVIDIA end user license agreement (EULA) associated
  * with this source code for terms and conditions that govern your use of
@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cuda.h>
 #include "shrUtils.h"
+#include <omp.h>
 
 // Forward Declarations
 void DotProductHost(const float* pfData1, const float* pfData2, float* pfResult, int iNumElements);
@@ -31,17 +32,20 @@ void dot_product(const float *__restrict__ a,
                  const float *__restrict__ b,
                        float *__restrict__ c,
 #ifdef ASYNC
-                 const int nl,
+                 const int streamIdx,
 #endif
-                 const int nu,
+                 const int n,
                  const int iKWeight)
 {
   int iGID = blockIdx.x * blockDim.x + threadIdx.x;
+
 #ifdef ASYNC
-  if ((iGID >= nl) && (iGID < nu)) {
+  iGID +=streamIdx*n;
+  if (iGID < (streamIdx+1)*n) {
 #else
-  if (iGID < nu) {
+  if (iGID < n) {
 #endif
+
     int iInOffset = iGID << 2;
     for (int k = 0; k < iKWeight; k++) 
     c[iGID] = a[iInOffset    ] * b[iInOffset    ] +
@@ -54,7 +58,7 @@ void dot_product(const float *__restrict__ a,
 int main(int argc, char **argv)
 {
 #ifdef ASYNC
-  if (argc != 6) {
+  if (argc != 7) {
 #else
   if (argc != 5) {
 #endif
@@ -68,12 +72,12 @@ int main(int argc, char **argv)
   int szLocalWorkSize = atoi(argv[4]);
 #ifdef ASYNC
   const int ncustreams = atoi(argv[5]);
+  const int nhostthreads  = atoi(argv[6]);
+  const int ncustreams_thread = (ncustreams -2)/nhostthreads;
   const int numElementsSub = ceil(iNumElements/(ncustreams-2));
-  int szGlobalWorkSize = shrRoundUp((int)szLocalWorkSize, numElementsSub);  
-#else
+#endif
   // rounded up to the nearest multiple of the LocalWorkSize
   int szGlobalWorkSize = shrRoundUp((int)szLocalWorkSize, iNumElements);  
-#endif
 
   const size_t src_size = szGlobalWorkSize * 4;
   const size_t src_size_bytes = src_size * sizeof(float);
@@ -88,12 +92,13 @@ float* srcB;
 #ifdef ASYNC
   cudaMallocHost (&srcA, src_size_bytes);
   cudaMallocHost (&srcB, src_size_bytes);
+  float*  dst = (float*) malloc (dst_size_bytes);
 #else
   srcA = (float*) malloc (src_size_bytes);
   srcB = (float*) malloc (src_size_bytes);
+  float*  dst = (float*) malloc (dst_size_bytes);
 #endif
 
-  float*  dst = (float*) malloc (dst_size_bytes);
   float* Golden = (float*) malloc (sizeof(float) * iNumElements);
   shrFillArray(srcA, 4 * iNumElements);
   shrFillArray(srcB, 4 * iNumElements);
@@ -127,13 +132,18 @@ float* srcB;
 #ifdef ASYNC
     cudaMemcpyAsync(d_srcA, srcA, src_size_bytes, cudaMemcpyHostToDevice, custream[0]);
     cudaMemcpyAsync(d_srcB, srcB, src_size_bytes, cudaMemcpyHostToDevice, custream[1]);
-  cudaDeviceSynchronize();
-    for (int k=2; k<ncustreams; k++){
-       nl = (k-2)*numElementsSub;
-       nu = ((nl +numElementsSub) < iNumElements ) ?  (nl +numElementsSub) : iNumElements;
-       dot_product<<<grid, block, 0, custream[k]>>>(d_srcA, d_srcB, d_dst, nl, nu, iKWeight);
+    cudaDeviceSynchronize();
+
+    #pragma omp parallel num_threads( nhostthreads)
+    {
+       int tid = omp_get_thread_num();
+       int offset = tid*ncustreams_thread;
+    //#pragma omp for
+    for (int k=0; k<ncustreams_thread; k++){
+       int streamid = offset +k;
+       dot_product<<<grid, block, 0, custream[streamid +2]>>>(d_srcA, d_srcB, d_dst, streamid, numElementsSub, iKWeight);
     }
-//printf("numElementsSub : %d \t nl: %d \t nu: %d \t iNumElements: %d \n", numElementsSub, nl, nu, iNumElements);
+    }
 #else
     cudaMemcpy(d_srcA, srcA, src_size_bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_srcB, srcB, src_size_bytes, cudaMemcpyHostToDevice);

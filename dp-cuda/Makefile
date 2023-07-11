@@ -14,7 +14,7 @@ ARCH      = sm_60
 
 program = main
 
-source = main.cu shrUtils.cu
+source = main_d.cu shrUtils.cu
 
 obj = $(source:.cu=.o)
 
@@ -23,7 +23,7 @@ obj = $(source:.cu=.o)
 #===============================================================================
 
 # Standard Flags
-CFLAGS := $(EXTRA_CFLAGS) -std=c++14 -Xcompiler -Wall -arch=$(ARCH)
+CFLAGS := $(EXTRA_CFLAGS) -std=c++14  -arch=$(ARCH)
 
 # Linker Flags
 LDFLAGS = 
@@ -42,8 +42,10 @@ endif
 
 # ASYNC
 ifeq ($(USE_ASYNC), yes)
-     CFLAGS += -DASYNC
+     CFLAGS += -DASYNC -Xcompiler=-fopenmp
      program :=$(program)_async
+else
+     CFLAGS += -Xcompiler -Wall
 endif
 
 #===============================================================================
