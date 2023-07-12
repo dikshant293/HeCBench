@@ -92,12 +92,11 @@ float* srcB;
 #ifdef ASYNC
   cudaMallocHost (&srcA, src_size_bytes);
   cudaMallocHost (&srcB, src_size_bytes);
-  float*  dst = (float*) malloc (dst_size_bytes);
 #else
   srcA = (float*) malloc (src_size_bytes);
   srcB = (float*) malloc (src_size_bytes);
-  float*  dst = (float*) malloc (dst_size_bytes);
 #endif
+  float*  dst = (float*) malloc (dst_size_bytes);
 
   float* Golden = (float*) malloc (sizeof(float) * iNumElements);
   shrFillArray(srcA, 4 * iNumElements);
@@ -120,9 +119,6 @@ float* srcB;
   auto start = std::chrono::steady_clock::now();
 
 #ifdef ASYNC
-  int nl = 0;
-  int nu = iNumElements;
-
   cudaStream_t custream[ncustreams];
   for (int ics=0; ics<ncustreams; ics++ )
     cudaStreamCreate(&custream[ics]);
@@ -153,14 +149,14 @@ float* srcB;
 }
   //cudaDeviceSynchronize();
   cudaMemcpy(dst, d_dst, dst_size_bytes, cudaMemcpyDeviceToHost);
-  auto end = std::chrono::steady_clock::now();
-  auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-  printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
-
 #ifdef ASYNC
   for (int ics=0; ics<ncustreams; ics++ )
     cudaStreamDestroy(custream[ics]);
 #endif
+
+  auto end = std::chrono::steady_clock::now();
+  auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+  printf("Average execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
 
   // Compute and compare results for golden-host and report errors and pass/fail
   printf("Comparing against Host/C++ computation...\n\n"); 
