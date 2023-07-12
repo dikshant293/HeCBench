@@ -27,7 +27,11 @@ void DotProductHost(const float* pfData1, const float* pfData2, float* pfResult,
 
 int main(int argc, char **argv)
 {
-  if (argc != 5) {
+//#ifdef ASYNC
+  if (argc != 7) {
+//#else
+//  if (argc != 5) {
+//#endif
     printf("Usage: %s <number of elements> <repeat>\n", argv[0]);
     return 1;
   }
@@ -37,8 +41,14 @@ int main(int argc, char **argv)
 
   // set and log Global and Local work size dimensions
   int szLocalWorkSize = atoi(argv[4]);
+//#ifdef ASYNC
+ const int nchunks  = atoi(argv[5]);
+ const int nhostthreads  = atoi(argv[6]);
+//#endif
   // rounded up to the nearest multiple of the LocalWorkSize
   int szGlobalWorkSize = shrRoundUp((int)szLocalWorkSize, iNumElements);  
+
+  const int n = iNumElements/nchunks;
 
   const size_t src_size = szGlobalWorkSize * 4;
   const size_t src_size_bytes = src_size * sizeof(float);
@@ -68,12 +78,14 @@ int main(int argc, char **argv)
 //        shrFillArray(srcB, 4 * iNumElements);
 #pragma omp target update to(srcA[0:src_size], srcB[0:src_size])
 
+      #pragma omp parallel for num_threads(nhostthreads)
+      for (int hc = 0; hc < nchunks; hc++) {
 #ifdef ASYNC  
       #pragma omp target teams distribute parallel for thread_limit(szLocalWorkSize) nowait
 #else
       #pragma omp target teams distribute parallel for thread_limit(szLocalWorkSize) 
 #endif
-      for (int iGID = 0; iGID < iNumElements; iGID++) {
+      for (int iGID = hc*n; iGID < (hc+1)*n; iGID++) {
         int iInOffset = iGID << 2;
         for (int k = 0; k < iKWeight; k++) 
         dst[iGID] =  srcA[iInOffset    ] * srcB[iInOffset    ] +
@@ -82,7 +94,7 @@ int main(int argc, char **argv)
                      srcA[iInOffset + 3] * srcB[iInOffset + 3];
       }
     }
-
+    }
 #ifdef ASYNC 
 #ifdef TASKWAIT 
        //#pragma omp barrier 
@@ -90,14 +102,14 @@ int main(int argc, char **argv)
 #endif    
 #endif    
 #pragma omp target update from(dst[0:dst_size])
-    //auto end = std::chrono::steady_clock::now();
-    //auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    //printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
-  }
-
     auto end = std::chrono::steady_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    printf("elapsed time %f (s)\n", (time * 1e-9f));
+    printf("Average kernel execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
+  }
+
+    //auto end = std::chrono::steady_clock::now();
+    //auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    //printf("elapsed time %f (s)\n", (time * 1e-9f));
 
   // Compute and compare results for golden-host and report errors and pass/fail
   printf("Comparing against Host/C++ computation...\n\n"); 
