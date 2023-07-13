@@ -42,8 +42,12 @@ endif
 
 # ASYNC
 ifeq ($(USE_ASYNC), yes)
-     CFLAGS += -DASYNC -Xcompiler=-fopenmp
+     CFLAGS += -DASYNC
      program :=$(program)_async
+ifeq ($(USE_OMP), yes)
+     CFLAGS += -DOMP -Xcompiler=-fopenmp
+     program :=$(program)_omp
+endif
 else
      CFLAGS += -Xcompiler -Wall
 endif

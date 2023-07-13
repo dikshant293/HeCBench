@@ -1,0 +1,142 @@
+#!/bin/bash
+# Begin LSF Directives
+#BSUB -P gen010
+#BSUB -W 01:00
+#BSUB -nnodes 1
+#BSUB -alloc_flags gpumps
+#BSUB -J run_async
+#BSUB -o run_async.%J
+#BSUB -e run_async.%J
+
+#Using modules
+ml cuda
+
+nit=100
+tweight=1000
+#Tuning param: team size, tsz 
+export OMP_NUM_THREADS=1 
+nht=1
+nst=3
+tsz=32
+while [ $tsz -le 256 ]
+do
+    i=0
+    while [ $i -le 5 ]
+    do
+        nele=1048576	    
+    	jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 1 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+    	jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 1 -d packed -b rs -l CPU-CPU ./bin/main_d ${nele} ${nit} ${tweight} ${tsz} >> ./res/main_d_${nele}_${nit}_${tweight}_${tsz}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 1 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 1 -d packed -b rs -l CPU-CPU ./bin/main_d ${nele} ${nit} ${tweight} ${tsz} >> ./res/main_d_${nele}_${nit}_${tweight}_${tsz}.txt
+
+    i=`expr $i + 1`
+    done
+    tsz=`expr $tsz \* 2`
+done
+
+#Tuning param: gpu cuda streams, nst 
+export OMP_NUM_THREADS=1
+nht=1
+nkst=2 #number of kernel streams
+tsz=256
+while [ $nkst -le 16 ]
+do
+    nst=`expr $nkst + 2`
+    i=0
+    while [ $i -le 5 ]
+    do
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 1 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 1 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+    i=`expr $i + 1`
+    done
+    nkst=`expr $nkst \* 2`
+done
+
+#Tuning param: number of host threads, a gpu stream/thread 
+export OMP_NUM_THREADS=42
+#nht=nkst
+nkst=2 #number of kernel streams
+tsz=256
+while [ $nkst -le 16 ]
+do
+    nst=`expr $nkst + 2`
+    nht=${nkst}
+    i=0
+    while [ $i -le 5 ]
+    do
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+    i=`expr $i + 1`
+    done
+    nkst=`expr $nkst \* 2`
+done
+
+
+#Tuning param: number of host threads as well as number of gpu streams - streams/thread 
+export OMP_NUM_THREADS=42
+tsz=256
+    i=0
+    while [ $i -le 5 ]
+    do
+        nst=6
+        nht=2
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nst=10
+        nht=2
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nst=10
+        nht=4
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nst=18
+        nht=2
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nst=18
+        nht=4
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nst=18
+        nht=8
+        nele=1048576
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+        nele=16777216
+        jsrun --smpiargs="-disable_gpu_hooks" -n 1 -r 1 -a 1 -g 1 -c 42 -d packed -b rs -l CPU-CPU ./bin/main_d_async ${nele} ${nit} ${tweight} ${tsz} ${nst} ${nht} >> ./res/main_d_async_${nele}_${nit}_${tweight}_${tsz}_${nst}_${nht}.txt
+
+    i=`expr $i + 1`
+    done

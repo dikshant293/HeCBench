@@ -58,7 +58,11 @@ void dot_product(const float *__restrict__ a,
 int main(int argc, char **argv)
 {
 #ifdef ASYNC
+#ifdef OMP
   if (argc != 7) {
+#else
+  if (argc != 6) {
+#endif
 #else
   if (argc != 5) {
 #endif
@@ -72,9 +76,11 @@ int main(int argc, char **argv)
   int szLocalWorkSize = atoi(argv[4]);
 #ifdef ASYNC
   const int ncustreams = atoi(argv[5]);
+  const int numElementsSub = ceil(iNumElements/(ncustreams-2));
+#ifdef OMP
   const int nhostthreads  = atoi(argv[6]);
   const int ncustreams_thread = (ncustreams -2)/nhostthreads;
-  const int numElementsSub = ceil(iNumElements/(ncustreams-2));
+#endif
 #endif
   // rounded up to the nearest multiple of the LocalWorkSize
   int szGlobalWorkSize = shrRoundUp((int)szLocalWorkSize, iNumElements);  
@@ -110,8 +116,8 @@ float* srcB;
   cudaMalloc((void**)&d_srcB, src_size_bytes);
   cudaMalloc((void**)&d_dst, dst_size_bytes);
 
-  printf("Global Work Size \t\t= %d\nLocal Work Size \t\t= %d\n# of Work Groups \t\t= %d\n\n", 
-      szGlobalWorkSize, szLocalWorkSize, (szGlobalWorkSize % szLocalWorkSize + szGlobalWorkSize/szLocalWorkSize)); 
+  //printf("Global Work Size \t\t= %d\nLocal Work Size \t\t= %d\n# of Work Groups \t\t= %d\n\n", 
+      //szGlobalWorkSize, szLocalWorkSize, (szGlobalWorkSize % szLocalWorkSize + szGlobalWorkSize/szLocalWorkSize)); 
   dim3 grid (szGlobalWorkSize % szLocalWorkSize + szGlobalWorkSize/szLocalWorkSize); 
   dim3 block (szLocalWorkSize);
 
@@ -130,16 +136,25 @@ float* srcB;
     cudaMemcpyAsync(d_srcB, srcB, src_size_bytes, cudaMemcpyHostToDevice, custream[1]);
     cudaDeviceSynchronize();
 
+#ifdef OMP
     #pragma omp parallel num_threads( nhostthreads)
     {
        int tid = omp_get_thread_num();
        int offset = tid*ncustreams_thread;
+      
     //#pragma omp for
     for (int k=0; k<ncustreams_thread; k++){
        int streamid = offset +k;
+#else
+   for (int k=0; k<ncustreams-2; k++){
+       int streamid = k;
+#endif
        dot_product<<<grid, block, 0, custream[streamid +2]>>>(d_srcA, d_srcB, d_dst, streamid, numElementsSub, iKWeight);
     }
+#ifdef OMP
     }
+#endif
+
 #else
     cudaMemcpy(d_srcA, srcA, src_size_bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_srcB, srcB, src_size_bytes, cudaMemcpyHostToDevice);
@@ -147,7 +162,7 @@ float* srcB;
 #endif
 
 }
-  //cudaDeviceSynchronize();
+  cudaDeviceSynchronize();
   cudaMemcpy(dst, d_dst, dst_size_bytes, cudaMemcpyDeviceToHost);
 #ifdef ASYNC
   for (int ics=0; ics<ncustreams; ics++ )
@@ -156,13 +171,14 @@ float* srcB;
 
   auto end = std::chrono::steady_clock::now();
   auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-  printf("Average execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
+  //printf("Average execution time %f (s)\n", (time * 1e-9f) / iNumIterations);
+  printf("%f\n", (time * 1e-9f) );
 
   // Compute and compare results for golden-host and report errors and pass/fail
-  printf("Comparing against Host/C++ computation...\n\n"); 
+  //printf("Comparing against Host/C++ computation...\n\n"); 
   DotProductHost ((const float*)srcA, (const float*)srcB, (float*)Golden, iNumElements);
   shrBOOL bMatch = shrComparefet((const float*)Golden, (const float*)dst, (unsigned int)iNumElements, 0.0f, 0);
-  printf("\nGPU Result %s CPU Result\n", (bMatch == shrTRUE) ? "matches" : "DOESN'T match"); 
+  //printf("\nGPU Result %s CPU Result\n", (bMatch == shrTRUE) ? "matches" : "DOESN'T match"); 
 
 #ifdef ASYNC
   cudaFreeHost(srcA);
