@@ -58,11 +58,7 @@ void dot_product(const float *__restrict__ a,
 int main(int argc, char **argv)
 {
 #ifdef ASYNC
-#ifdef OMP
   if (argc != 7) {
-#else
-  if (argc != 6) {
-#endif
 #else
   if (argc != 5) {
 #endif
@@ -76,11 +72,10 @@ int main(int argc, char **argv)
   int szLocalWorkSize = atoi(argv[4]);
 #ifdef ASYNC
   const int ncustreams = atoi(argv[5]);
-  const int numElementsSub = ceil(iNumElements/(ncustreams-2));
-#ifdef OMP
   const int nhostthreads  = atoi(argv[6]);
-  const int ncustreams_thread = (ncustreams -2)/nhostthreads;
-#endif
+  const int numElements_stream = iNumElements/ncustreams;
+  const size_t src_size_stream = numElements_stream *4;
+  const size_t src_size_bytes_stream  = src_size_stream* sizeof(float);
 #endif
   // rounded up to the nearest multiple of the LocalWorkSize
   int szGlobalWorkSize = shrRoundUp((int)szLocalWorkSize, iNumElements);  
@@ -90,9 +85,6 @@ int main(int argc, char **argv)
 
   const size_t dst_size = szGlobalWorkSize;
   const size_t dst_size_bytes = dst_size * sizeof(float);
-
-  const size_t src_size_stream = iNumElements/ncustreams;
-  const size_t src_size_bytes_stream  = src_size_stream* sizeof(float);
 
   // Allocate and initialize host arrays
 float* srcA;
@@ -128,9 +120,9 @@ float* srcB;
   auto start = std::chrono::steady_clock::now();
 
 #ifdef ASYNC
-  //cudaStream_t custream[ncustreams];
-  //for (int ics=0; ics<ncustreams; ics++ )
-   // cudaStreamCreate(&custream[ics]);
+  cudaStream_t custream[ncustreams];
+  for (int ics=0; ics<ncustreams; ics++ )
+    cudaStreamCreate(&custream[ics]);
 #endif
 
   for (int i = 0; i < iNumIterations; i++) {
@@ -139,7 +131,6 @@ float* srcB;
     //cudaMemcpyAsync(d_srcB, srcB, src_size_bytes, cudaMemcpyHostToDevice, custream[1]);
     //cudaDeviceSynchronize();
 
-#ifdef OMP
     #pragma omp parallel num_threads( nhostthreads)
     {
        //cudaStream_t custream;
@@ -149,26 +140,18 @@ float* srcB;
       
     #pragma omp for nowait
     for (int k=0; k<ncustreams; k++){
-         cudaStream_t custream;
-         cudaStreamCreate(&custream);
-       //int streamid = offset +k;
-         cudaMemcpyAsync(&d_srcA[k*src_size_stream], &srcA[k*src_size_stream], src_size_bytes_stream, cudaMemcpyHostToDevice, custream);
-         cudaMemcpyAsync(&d_srcB[k*src_size_stream], &srcB[k*src_size_stream], src_size_bytes_stream, cudaMemcpyHostToDevice, custream);
+   //      cudaStream_t custream;
+   //      cudaStreamCreate(&custream);
+
+         cudaMemcpyAsync(&d_srcA[k*src_size_stream], &srcA[k*src_size_stream], src_size_bytes_stream, cudaMemcpyHostToDevice, custream[k]);
+         cudaMemcpyAsync(&d_srcB[k*src_size_stream], &srcB[k*src_size_stream], src_size_bytes_stream, cudaMemcpyHostToDevice, custream[k]);
          cudaDeviceSynchronize();
-       int streamid = k;
-#else
-   for (int k=0; k<ncustreams-2; k++){
-       int streamid = k;
-#endif
-       //dot_product<<<grid, block, 0, custream[streamid +2]>>>(d_srcA, d_srcB, d_dst, streamid, numElementsSub, iKWeight);
-       dot_product<<<grid, block, 0, custream >>>(d_srcA, d_srcB, d_dst, streamid, src_size_stream, iKWeight);
-       //dot_product<<<grid, block, 0, custream >>>(&d_srcA[k*src_size_stream], &d_srcB[k*src_size_stream], &d_dst[], streamid, numElementsSub, iKWeight);
-       cudaStreamDestroy(custream);
+
+       dot_product<<<grid, block, 0, custream[k] >>>(d_srcA, d_srcB, d_dst, k, numElements_stream, iKWeight);
+
+      // cudaStreamDestroy(custream);
     }
-#ifdef OMP
-    //cudaStreamDestroy(custream);
     }
-#endif
 
 #else
     cudaMemcpy(d_srcA, srcA, src_size_bytes, cudaMemcpyHostToDevice);
@@ -180,8 +163,8 @@ float* srcB;
   cudaDeviceSynchronize();
   cudaMemcpy(dst, d_dst, dst_size_bytes, cudaMemcpyDeviceToHost);
 #ifdef ASYNC
-  //for (int ics=0; ics<ncustreams; ics++ )
-   // cudaStreamDestroy(custream[ics]);
+  for (int ics=0; ics<ncustreams; ics++ )
+    cudaStreamDestroy(custream[ics]);
 #endif
 
   auto end = std::chrono::steady_clock::now();
