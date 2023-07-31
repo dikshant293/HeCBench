@@ -39,12 +39,15 @@ void shrFree(void* ptr)
 // Helper function to init data arrays 
 // *********************************************************************
 void shrFillArray(float* pfData, int iSize)
+//template<class T>
+//void shrFillArray(int* pfData, int iSize)
 {
     int i; 
     const float fScale = 1.0f / (float)RAND_MAX;
     for (i = 0; i < iSize; ++i) 
     {
         pfData[i] = fScale * rand();
+        //pfData[i] = (int) fScale * rand();
     }
 }
 
@@ -1436,7 +1439,9 @@ shrBOOL shrComparefe( const float* reference, const float* data,
 //! @param len        number of elements in reference and data
 //! @param epsilon    epsilon to use for the comparison
 ////////////////////////////////////////////////////////////////////////////////
+//template<class T>
 shrBOOL shrComparefet( const float* reference, const float* data,
+//shrBOOL shrComparefet( const int* reference, const int* data,
              const unsigned int len, const float epsilon, const float threshold ) 
 {
     return compareDataAsFloatThreshold( reference, data, len, epsilon, threshold );

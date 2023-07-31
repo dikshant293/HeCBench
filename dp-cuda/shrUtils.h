@@ -185,6 +185,7 @@ extern "C" void shrSetLogFileName (const char* cOverRideName);
 
 // Helper function to init data arrays 
 // *********************************************************************
+//extern "C" void shrFillArray(int* pfData, int iSize);
 extern "C" void shrFillArray(float* pfData, int iSize);
 
 // Helper function to print data arrays 
@@ -561,6 +562,7 @@ extern "C" shrBOOL shrComparefe( const float* reference, const float* data,
 //! @param epsilon    epsilon to use for the comparison
 ////////////////////////////////////////////////////////////////////////////////
 extern "C" shrBOOL shrComparefet( const float* reference, const float* data,
+//extern "C" shrBOOL shrComparefet( const int* reference, const int* data,
              const unsigned int len, const float epsilon, const float threshold );
 
 ////////////////////////////////////////////////////////////////////////////

@@ -130,16 +130,17 @@ float* srcB;
   auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < iNumIterations; i++)
 #ifdef ASYNC
-    #pragma omp parallel num_threads( nhostthreads)
-    {
-       int tid = omp_get_thread_num();
-       int offset = tid*ncustreams_thread;
+    //#pragma omp parallel num_threads( nhostthreads)
+    //{
+     //  int tid = omp_get_thread_num();
+      // int offset = tid*ncustreams_thread;
     //#pragma omp for
-    for (int k=0; k<ncustreams_thread; k++){
-       int streamid = offset +k;
-       dot_product<<<grid, block, 0, custream[streamid +2]>>>(d_srcA, d_srcB, d_dst, streamid, numElementsSub);
-    }
-    }
+   // for (int k=0; k<ncustreams_thread; k++){
+      // int streamid = offset +k;
+       dot_product<<<grid, block, 0, custream[2]>>>(d_srcA, d_srcB, d_dst, 0, numElementsSub);
+       //dot_product<<<grid, block, 0, custream[streamid +2]>>>(d_srcA, d_srcB, d_dst, streamid, numElementsSub);
+   // }
+  //  }
 #else
     dot_product<<<grid, block>>>(d_srcA, d_srcB, d_dst, iNumElements);
 #endif
