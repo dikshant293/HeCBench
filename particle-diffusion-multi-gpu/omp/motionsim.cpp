@@ -7,8 +7,11 @@
 #include <iostream>
 #include <vector>
 #include <limits.h>
+#include <sys/mman.h>
+#include <errno.h>
 #include <omp.h>
 #include <assert.h>
+#include <string.h>
 
 #define CEIL(x, y) (((x) + (y) - 1) / (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -132,6 +135,21 @@ inline unsigned gpu_scheduler_dynamic_occ(unsigned *occupancies, int ngpus)
     return chosen;
 }
 
+// omp_allocator_handle_t my_allocator;
+
+// Function to allocate pinned memory
+void* pinnedMalloc(size_t size) {
+    // Use mmap to allocate memory
+    // void* ptr = omp_alloc(size, my_allocator);
+    void *ptr = omp_alloc(size, llvm_omp_target_host_mem_alloc);
+    return ptr;  // Return the pointer to the allocated memory
+}
+
+void free_ptr(void* ptr){
+    // delete[] ptr;
+    omp_free(ptr,llvm_omp_target_host_mem_alloc);
+}
+
 // This function displays correct usage and parameters
 void usage(std::string programName)
 {
@@ -243,7 +261,7 @@ std::vector<int> generateEqualChunkStartIndices(int n, int m)
 void motion_device(float *particleX, float *particleY,
                    float *randomX, float *randomY, int **grid, int grid_size,
                    size_t n_particles, unsigned int nIterations, float radius,
-                   size_t *map, float granularity = 0.0)
+                   size_t *map, float granularity = 0.0, const int ndevs = 1)
 {
 
     srand(17);
@@ -259,21 +277,19 @@ void motion_device(float *particleX, float *particleY,
     }
 
     const size_t MAP_SIZE = n_particles * grid_size * grid_size;
-
-    const int ndevs = omp_get_num_devices();
     assert(ndevs > 0);
-    int *devices = (int *)calloc(ndevs, sizeof(*devices));
+    int *devices = (int *)pinnedMalloc(ndevs * sizeof(*devices));
     double start_iterations, end_iterations;
     unsigned *lastGPU = NULL;
 
-    unsigned *occupancies = (unsigned *)calloc(ndevs, sizeof(*occupancies));
-    unsigned long *gpuLoad = (unsigned long *)calloc(ndevs, sizeof(*gpuLoad));
+    unsigned *occupancies = (unsigned *)pinnedMalloc(ndevs * sizeof(*occupancies));
+    unsigned long *gpuLoad = (unsigned long *)pinnedMalloc(ndevs * sizeof(*gpuLoad));
 
     int particlesPerTask = MAX(1, (1.0 - granularity) * n_particles);
     int numTasks = CEIL(n_particles, particlesPerTask);
 
-    int *chosen = (int *)malloc(sizeof(int) * numTasks);
-    int *success = (int *)malloc(sizeof(int) * numTasks);
+    int *chosen = (int *)pinnedMalloc(sizeof(int) * numTasks);
+    int *success = (int *)pinnedMalloc(sizeof(int) * numTasks);
     printf("nTasks = %d particles per task = %d\n",numTasks,particlesPerTask);
     std::vector<int> startIndexes = generateEqualChunkStartIndices(n_particles, numTasks);
     std::vector<int> chunkSizes = calculateChunkSizes(startIndexes, n_particles);
@@ -327,10 +343,11 @@ void motion_device(float *particleX, float *particleY,
         float *partX = particleX + start, *partY = particleY + start;
         size_t *mp_ptr =  map + start * grid_size * grid_size;
 
+        // map(to : randX[0 : n_parts * nIterations], randY[0 : n_parts * nIterations]) \
+        // map(tofrom : partX[0 : n_parts], partY[0 : n_parts], mp_ptr[0 : n_parts * grid_size * grid_size]) \
         // openmp GPU kernel call
         #pragma omp target teams distribute parallel for num_teams(CEIL(n_parts,1024)) thread_limit(1024) schedule (static, 1) device(d) \
-        map(to : randX[0 : n_parts * nIterations], randY[0 : n_parts * nIterations]) \
-        map(tofrom : partX[0 : n_parts], partY[0 : n_parts], mp_ptr[0 : n_parts * grid_size * grid_size])
+        is_device_ptr(randX, randY, partX, partY, mp_ptr)
         for (int ii = start; ii < end; ii++)
         {
 
@@ -431,11 +448,24 @@ void motion_device(float *particleX, float *particleY,
 
 int main(int argc, char *argv[])
 {
+    #if _OPENMP >= 201511
+    std::cout << "OpenMP 5.0 is supported." << std::endl;
+    #else
+    std::cout << "OpenMP 5.0 is not supported." << std::endl;
+    #endif
+    // Create an allocator with the default memory space and request pinned memory
+    // omp_memspace_handle_t mem_space = omp_default_mem_space;
+    // omp_alloctrait_t traits[1];
+    // traits[0].key = omp_atk_pinned;
+    // traits[0].value = omp_atv_true;
+
+    // my_allocator = omp_init_allocator(mem_space, 1, traits);
+
     // Cell and Particle parameters
     const size_t grid_size = 21;       // Size of square grid
     int n_particles = 2e4; // Number of particles
     const float radius = 0.5;          // Cell radius = 0.5*(grid spacing)
-
+    int ndevs = omp_get_num_devices();
     // Default number of operations
     int nIterations = 50;
     float granularity = 0.9;
@@ -462,26 +492,30 @@ int main(int argc, char *argv[])
     {
         n_particles = atoi(argv[3]);
     }
+    if (argc > 4)
+    {
+        ndevs = atoi(argv[4]);
+    }
 
     // Allocate arrays
 
     // Stores a grid of cells
-    int **grid = (int**)malloc(grid_size * sizeof(int*));
-    grid[0] = (int*)malloc(grid_size*grid_size * sizeof(int));
+    int **grid = (int**)pinnedMalloc(grid_size * sizeof(int*));
+    grid[0] = (int*)pinnedMalloc(grid_size*grid_size * sizeof(int));
     for (size_t i = 0; i < grid_size; i++)
         grid[i] = grid[0] + grid_size*i;
 
     // Stores all random numbers to be used in the simulation
-    float *randomX = (float*)malloc(n_particles*nIterations*sizeof(float));
-    float *randomY = (float*)malloc(n_particles*nIterations*sizeof(float));
+    float *randomX = (float*)pinnedMalloc(n_particles*nIterations*sizeof(float));
+    float *randomY = (float*)pinnedMalloc(n_particles*nIterations*sizeof(float));
 
     // Stores X and Y position of particles in the cell grid
-    float *particleX = (float*)malloc(n_particles*sizeof(float));
-    float *particleY = (float*)malloc(n_particles*sizeof(float));
+    float *particleX = (float*)pinnedMalloc(n_particles*sizeof(float));
+    float *particleY = (float*)pinnedMalloc(n_particles*sizeof(float));
 
     // 'map' array replicates grid to be used by each particle
     const size_t MAP_SIZE = n_particles * grid_size * grid_size;
-    size_t *map = (size_t*)malloc(MAP_SIZE*sizeof(size_t));
+    size_t *map = (size_t*)pinnedMalloc(MAP_SIZE*sizeof(size_t));
     printf("nparticles = %d niterations = %d granularity = %lf\n",n_particles,nIterations,granularity);
     std::cout<<"total memory = "<<(float)(2 * n_particles * (nIterations + 1) * sizeof(float) + n_particles * grid_size * grid_size * sizeof(size_t))/1024/1024/1024<<" GB"<<std::endl;
     // Initialize arrays
@@ -507,10 +541,10 @@ int main(int argc, char *argv[])
             grid[y][x] = 0;
         }
     }
-
+    
     // Call simulation function
     motion_device(particleX, particleY, randomX, randomY, grid, grid_size,
-                  n_particles, nIterations, radius, map, granularity);
+                  n_particles, nIterations, radius, map, granularity, ndevs);
 
     if (grid_size <= 64)
     {
@@ -518,14 +552,15 @@ int main(int argc, char *argv[])
         // print_matrix<int>(grid, grid_size, grid_size);
     }
 
-    delete grid[0];
+    // free_ptr(grid[0]);
+    // free_ptr(grid);
+    // free_ptr(particleX);
+    // free_ptr(particleY);
+    // free_ptr(randomX);
+    // free_ptr(randomY);
+    // free_ptr(map);
 
-    delete[] grid;
-    delete[] particleX;
-    delete[] particleY;
-    delete[] randomX;
-    delete[] randomY;
-    delete[] map;
+    // omp_destroy_allocator(my_allocator);
 
     return 0;
 }

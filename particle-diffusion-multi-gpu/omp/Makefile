@@ -46,6 +46,10 @@ ifeq ($(DEVICE),gpu)
 else
   CFLAGS +=-fopenmp
 endif
+
+ifeq ($(CC),nvc++)
+  CFLAGS = -std=c++20  -Wall  -O3 -fopenmp -I. -fast -mp=gpu -gpu=cc80 -Xcompiler "-fopenmp,-fpic" -march=native -Xlinker -znoexecstack
+endif
 #===============================================================================
 # Targets to Build
 #===============================================================================
@@ -58,11 +62,11 @@ all: clean
 clean:
 	rm -rf $(TARGET) $(obj)
 
-run: clean all
-	./$(TARGET) 2000 0.9
-
 n=20000
 m=20000
+
+run: clean all
+	./$(TARGET) $(m) 0.99 $(n)
 
 test: clean all
 	./$(TARGET) $(m) 0.0 $(n)
