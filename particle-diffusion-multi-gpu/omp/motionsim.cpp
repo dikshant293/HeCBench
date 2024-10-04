@@ -135,19 +135,21 @@ inline unsigned gpu_scheduler_dynamic_occ(unsigned *occupancies, int ngpus)
     return chosen;
 }
 
-// omp_allocator_handle_t my_allocator;
+omp_allocator_handle_t my_allocator;
 
 // Function to allocate pinned memory
-void* pinnedMalloc(size_t size) {
+void* pinnedMalloc(unsigned long size) {
     // Use mmap to allocate memory
-    // void* ptr = omp_alloc(size, my_allocator);
-    void *ptr = omp_alloc(size, llvm_omp_target_host_mem_alloc);
+    void* ptr = omp_alloc(size, my_allocator);
+    // void *ptr = omp_alloc(size, llvm_omp_target_host_mem_alloc);
     return ptr;  // Return the pointer to the allocated memory
 }
 
-void free_ptr(void* ptr){
+template<typename T>
+void free_ptr(T ptr){
     // delete[] ptr;
-    omp_free(ptr,llvm_omp_target_host_mem_alloc);
+    omp_free(static_cast<void*>(ptr),my_allocator);
+    // omp_free((void*)ptr,llvm_omp_target_host_mem_alloc);
 }
 
 // This function displays correct usage and parameters
@@ -453,14 +455,20 @@ int main(int argc, char *argv[])
     #else
     std::cout << "OpenMP 5.0 is not supported." << std::endl;
     #endif
-    // Create an allocator with the default memory space and request pinned memory
-    // omp_memspace_handle_t mem_space = omp_default_mem_space;
-    // omp_alloctrait_t traits[1];
-    // traits[0].key = omp_atk_pinned;
-    // traits[0].value = omp_atv_true;
-
-    // my_allocator = omp_init_allocator(mem_space, 1, traits);
-
+    #ifdef __clang__
+    std::cout << "This program was compiled using Clang (LLVM)." << std::endl;
+    #else
+    std::cout << "This program was NOT compiled using Clang (LLVM)." << std::endl;
+    #endif
+    #if defined(LLVM_ALLOC)
+    my_allocator = llvm_omp_target_host_mem_alloc;
+    #else
+    omp_memspace_handle_t mem_space = omp_default_mem_space;
+    omp_alloctrait_t traits[1];
+    traits[0].key = omp_atk_pinned;
+    traits[0].value = omp_atv_true;
+    my_allocator = omp_init_allocator(mem_space, 1, traits);
+    #endif
     // Cell and Particle parameters
     const size_t grid_size = 21;       // Size of square grid
     int n_particles = 2e4; // Number of particles
@@ -500,22 +508,22 @@ int main(int argc, char *argv[])
     // Allocate arrays
 
     // Stores a grid of cells
-    int **grid = (int**)pinnedMalloc(grid_size * sizeof(int*));
-    grid[0] = (int*)pinnedMalloc(grid_size*grid_size * sizeof(int));
+    int **grid = static_cast<int**>(pinnedMalloc(grid_size * sizeof(int*)));
+    grid[0] = static_cast<int*>(pinnedMalloc(grid_size*grid_size * sizeof(int)));
     for (size_t i = 0; i < grid_size; i++)
         grid[i] = grid[0] + grid_size*i;
 
     // Stores all random numbers to be used in the simulation
-    float *randomX = (float*)pinnedMalloc(n_particles*nIterations*sizeof(float));
-    float *randomY = (float*)pinnedMalloc(n_particles*nIterations*sizeof(float));
+    float *randomX = static_cast<float*>(pinnedMalloc(n_particles*nIterations*sizeof(float)));
+    float *randomY = static_cast<float*>(pinnedMalloc(n_particles*nIterations*sizeof(float)));
 
     // Stores X and Y position of particles in the cell grid
-    float *particleX = (float*)pinnedMalloc(n_particles*sizeof(float));
-    float *particleY = (float*)pinnedMalloc(n_particles*sizeof(float));
+    float *particleX = static_cast<float*>(pinnedMalloc(n_particles*sizeof(float)));
+    float *particleY = static_cast<float*>(pinnedMalloc(n_particles*sizeof(float)));
 
     // 'map' array replicates grid to be used by each particle
     const size_t MAP_SIZE = n_particles * grid_size * grid_size;
-    size_t *map = (size_t*)pinnedMalloc(MAP_SIZE*sizeof(size_t));
+    size_t *map = static_cast<size_t*>(pinnedMalloc(MAP_SIZE*sizeof(size_t)));
     printf("nparticles = %d niterations = %d granularity = %lf\n",n_particles,nIterations,granularity);
     std::cout<<"total memory = "<<(float)(2 * n_particles * (nIterations + 1) * sizeof(float) + n_particles * grid_size * grid_size * sizeof(size_t))/1024/1024/1024<<" GB"<<std::endl;
     // Initialize arrays
@@ -552,15 +560,23 @@ int main(int argc, char *argv[])
         // print_matrix<int>(grid, grid_size, grid_size);
     }
 
-    // free_ptr(grid[0]);
-    // free_ptr(grid);
+    // std::cout<<grid[0]<<std::endl;
+    // std::cout<<grid<<std::endl;
+    // std::cout<<particleX<<std::endl;
+    // std::cout<<particleY<<std::endl;
+    // std::cout<<randomX<<std::endl;
+    // std::cout<<randomY<<std::endl;
+    // std::cout<<map<<std::endl;
+
     // free_ptr(particleX);
     // free_ptr(particleY);
     // free_ptr(randomX);
     // free_ptr(randomY);
     // free_ptr(map);
+    // free_ptr(grid[0]);
+    // free_ptr(grid);
 
-    // omp_destroy_allocator(my_allocator);
+    omp_destroy_allocator(my_allocator);
 
     return 0;
 }
